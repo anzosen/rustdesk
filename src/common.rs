@@ -1391,10 +1391,20 @@ pub async fn secure_tcp(conn: &mut Stream, key: &str) -> ResultType<()> {
     if use_ws() {
         return Ok(());
     }
-    let rs_pk = get_rs_pk(key);
-    let Some(rs_pk) = rs_pk else {
-        bail!("Handshake failed: invalid public key from rendezvous server");
+    /* 跳过验证以及修复错误提示*/
+    let (rs_pk, skip_verification) = if key.is_empty() {
+        // Use public key validation when no custom key is provided
+        let pk = get_rs_pk(key);
+        let Some(pk) = pk else {
+            bail!("Handshake failed: invalid public key from rendezvous server");
+        };
+        (pk, false)
+    } else {
+        // Skip public key validation when custom key is provided
+        // Use a dummy public key
+        (sign::PublicKey([0; 32]), true)
     };
+    //////////////
     match timeout(READ_TIMEOUT, conn.next()).await? {
         Some(Ok(bytes)) => {
             if let Ok(msg_in) = RendezvousMessage::parse_from_bytes(&bytes) {
@@ -1403,8 +1413,16 @@ pub async fn secure_tcp(conn: &mut Stream, key: &str) -> ResultType<()> {
                         if ex.keys.len() != 1 {
                             bail!("Handshake failed: invalid key exchange message");
                         }
-                        let their_pk_b = sign::verify(&ex.keys[0], &rs_pk)
-                            .map_err(|_| anyhow!("Signature mismatch in key exchange"))?;
+                        /* 配合上面 */
+                        let their_pk_b = if skip_verification {
+                            // Skip signature verification when custom key is provided
+                            ex.keys[0].clone()
+                        } else {
+                            // Perform normal signature verification
+                            sign::verify(&ex.keys[0], &rs_pk)
+                                .map_err(|_| anyhow!("Signature mismatch in key exchange"))?
+                        };
+                        //////////
                         let (asymmetric_value, symmetric_value, key) = create_symmetric_key_msg(
                             get_pk(&their_pk_b)
                                 .context("Wrong their public length in key exchange")?,
