@@ -1391,7 +1391,7 @@ pub async fn secure_tcp(conn: &mut Stream, key: &str) -> ResultType<()> {
     if use_ws() {
         return Ok(());
     }
-    /* 跳过验证以及修复错误提示*/
+    /* 跳过验证以及修复错误提示 */
     let (rs_pk, skip_verification) = if key.is_empty() {
         // Use public key validation when no custom key is provided
         let pk = get_rs_pk(key);
